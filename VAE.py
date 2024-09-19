@@ -1,4 +1,5 @@
-# This is a line-by-line interpretation of the VAE coding example in: https://github.com/y0ast/Variational-Autoencoder/blob/master/VAE.py
+# This is a line-by-line interpretation of the VAE coding example in:
+# https://github.com/y0ast/Variational-Autoencoder/blob/master/VAE.py
 
 from __future__ import division
 # This line is ensuring that the division operator / behaves consistently between Python 2 and Python 3.
@@ -8,14 +9,14 @@ from __future__ import division
 # even in Python 2, making the code more forward-compatible.
 import numpy as np
 # NumPy is a fundamental package for scientific computing in Python, providing support for large,
-# multi-dimensional arrays and matrices, along with a collection of mathematical functions to operate on these arrays.
+# multidimensional arrays and matrices, along with a collection of mathematical functions to operate on these arrays.
 # Here, numpy is imported as np for shorthand use in the code. You’ll be able to use NumPy functions like np.array(),
 # np.dot(), etc., to perform array and matrix operations.
 import theano
-# Theano is a deep learning library that allows you to define, optimize, and evaluate mathematical expressions involving
-# multi-dimensional arrays efficiently.
-# Theano is often used to build symbolic representations of functions and expressions, and it supports automatic differentiation,
-# making it suitable for machine learning and deep learning tasks.
+# Theano is a deep learning library that allows you to define, optimize, and evaluate mathematical expressions
+# involving multidimensional arrays efficiently. Theano is often used to build symbolic representations of functions
+# and expressions, and it supports automatic differentiation, making it suitable for machine learning and deep
+# learning tasks.
 import theano.tensor as T
 # This imports the tensor module from Theano and aliases it as T for convenience.
 # Theano’s tensor module provides symbolic data structures for manipulating multi-dimensional arrays (tensors).
@@ -24,11 +25,11 @@ import theano.tensor as T
 # and matrices, respectively, that can later be used in mathematical operations within Theano's computational graph.
 import pickle
 # This line imports the pickle module, which is used for serializing (converting Python objects into a byte stream)
-# and deserializing (converting the byte stream back into Python objects).
-# Common use case:
-# Saving Python objects like lists, dictionaries, or even complex objects (e.g., machine learning models) to a file, so they can be loaded and used later.
-# Loading previously saved objects from a file back into a Python program.
+# and deserializing (converting the byte stream back into Python objects). Common use case: Saving Python objects
+# like lists, dictionaries, or even complex objects (e.g., machine learning models) to a file, so they can be loaded
+# and used later. Loading previously saved objects from a file back into a Python program.
 from collections import OrderedDict
+
 #This line imports the OrderedDict class from the collections module.
 # OrderedDict is a specialized dictionary that remembers the order in which key-value pairs are inserted.
 # In contrast, a regular Python dictionary does not guarantee insertion order in versions prior to Python 3.7
@@ -37,13 +38,19 @@ from collections import OrderedDict
 # such as for serialization or when the insertion order has semantic meaning.
 
 epsilon = 1e-8
+
+
 def relu(x):
-    return T.switch(x<0, 0, x)
+    return T.switch(x < 0, 0, x)
+
+
 #T.switch is a function from Theano that works like a conditional statement:, If x < 0, return 0. Otherwise, return x.
 
 class VAE:
     """This class implements the Variational Auto Encoder"""
-    def __init__(self, continuous, hu_encoder, hu_decoder, n_latent, x_train, b1=0.95, b2=0.999, batch_size=100, learning_rate=0.001, lam=0, L=1):
+
+    def __init__(self, continuous, hu_encoder, hu_decoder, n_latent, x_train, b1=0.95, b2=0.999, batch_size=100,
+                 learning_rate=0.001, lam=0, L=1):
         # continuous: whether the model is continuous or discrete
         # hu_encoder: number of hidden nodes in the encoder
         # hu_decoder: number of hidden nodes in the decoder
@@ -81,7 +88,8 @@ class VAE:
         # weights and biases in the NN are initialized.
         # Weights are initialized using a Gaussian distribution with standard deviation 0.01.
         # Biases are all zero
-        create_weight = lambda dim_input, dim_output: self.prng.normal(0, sigma_init, (dim_input, dim_output)).astype(theano.config.floatX)
+        create_weight = lambda dim_input, dim_output: self.prng.normal(0, sigma_init, (dim_input, dim_output)).astype(
+            theano.config.floatX)
         create_bias = lambda dim_output: np.zeros(dim_output).astype(theano.config.floatX)
 
         # encoder
@@ -128,8 +136,8 @@ class VAE:
         self.v = OrderedDict()
 
         for key, value in self.params.items():
-                self.m[key] = theano.shared(np.zeros_like(value.get_value()).astype(theano.config.floatX), name='m_' + key)
-                self.v[key] = theano.shared(np.zeros_like(value.get_value()).astype(theano.config.floatX), name='v_' + key)
+            self.m[key] = theano.shared(np.zeros_like(value.get_value()).astype(theano.config.floatX), name='m_' + key)
+            self.v[key] = theano.shared(np.zeros_like(value.get_value()).astype(theano.config.floatX), name='v_' + key)
 
         x_train = theano.shared(x_train.astype(theano.config.floatX), name="x_train")
 
@@ -137,7 +145,8 @@ class VAE:
 
         # Define encoder function
         def encoder(self, x):
-            h_encoder = relu(T.dot(x, self.params['W_xh']) + self.params['b_xh'].dimshuffle('x', 0)) # T.dot is matrix multiplication
+            h_encoder = relu(T.dot(x, self.params['W_xh']) + self.params['b_xh'].dimshuffle('x',
+                                                                                            0))  # T.dot is matrix multiplication
 
             mu = T.dot(h_encoder, self.params['W_hmu']) + self.params['b_hmu'].dimshuffle('x', 0)
             log_sigma = T.dot(h_encoder, self.params['W_hsigma']) + self.params['b_hsigma'].dimshuffle('x', 0)
@@ -211,3 +220,54 @@ class VAE:
             decode = theano.function([z], reconstructed_x)
 
             return update, likelihood, encode, decode
+
+        # This method transform x into encoded x
+        def transform_data(self, x_train):
+            transformed_x = np.zeros((self.N, self.n_latent))
+            batches = np.arange(int(self.N / self.batch_size))
+
+            for batch in batches:
+                batch_x = x_train[batch * self.batch_size:(batch + 1) * self.batch_size, :]
+                transformed_x[batch * self.batch_size:(batch + 1) * self.batch_size, :] = self.encode(batch_x)
+
+            return transformed_x
+
+        #
+        def save_parameters(self, path):
+            """Saves all the parameters in a way they can be retrieved later"""
+            pickle.dump({name: p.get_value() for name, p in self.params.items()}, open(path + "/params.pkl", "wb"))
+            pickle.dump({name: m.get_value() for name, m in self.m.items()}, open(path + "/m.pkl", "wb"))
+            pickle.dump({name: v.get_value() for name, v in self.v.items()}, open(path + "/v.pkl", "wb"))
+
+        def load_parameters(self, path):
+            """Load the variables in a shared variable safe way"""
+            p_list = pickle.load(open(path + "/params.pkl", "rb"))
+            m_list = pickle.load(open(path + "/m.pkl", "rb"))
+            v_list = pickle.load(open(path + "/v.pkl", "rb"))
+            for name in p_list.keys():
+                self.params[name].set_value(p_list[name].astype(theano.config.floatX))
+                self.m[name].set_value(m_list[name].astype(theano.config.floatX))
+                self.v[name].set_value(v_list[name].astype(theano.config.floatX))
+
+        def get_adam_updates(self, gradients, epoch):
+            updates = OrderedDict()
+            gamma = T.sqrt(1 - self.b2 ** epoch) / (1 - self.b1 ** epoch)
+
+            values_iterable = zip(self.params.keys(), self.params.values(), gradients,
+                                  self.m.values(), self.v.values())
+            for name, parameter, gradient, m, v in values_iterable:
+                new_m = self.b1 * m + (1. - self.b1) * gradient
+                new_v = self.b2 * v + (1. - self.b2) * (gradient ** 2)
+
+                updates[parameter] = parameter + self.learning_rate * gamma * new_m / (T.sqrt(new_v) + epsilon)
+
+                if 'W' in name:
+                    # MAP on weights (same as L2 regularization)
+                    updates[parameter] -= self.learning_rate * self.lam * (
+                                parameter * np.float32(self.batch_size / self.N))
+
+                updates[m] = new_m
+                updates[v] = new_v
+
+            return updates
+
