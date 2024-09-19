@@ -144,130 +144,129 @@ class VAE:
         self.update, self.likelihood, self.encode, self.decode = self.create_gradientfunctions(x_train)
 
         # Define encoder function
-        def encoder(self, x):
-            h_encoder = relu(T.dot(x, self.params['W_xh']) + self.params['b_xh'].dimshuffle('x',
+    def encoder(self, x):
+        h_encoder = relu(T.dot(x, self.params['W_xh']) + self.params['b_xh'].dimshuffle('x',
                                                                                             0))  # T.dot is matrix multiplication
 
-            mu = T.dot(h_encoder, self.params['W_hmu']) + self.params['b_hmu'].dimshuffle('x', 0)
-            log_sigma = T.dot(h_encoder, self.params['W_hsigma']) + self.params['b_hsigma'].dimshuffle('x', 0)
+        mu = T.dot(h_encoder, self.params['W_hmu']) + self.params['b_hmu'].dimshuffle('x', 0)
+        log_sigma = T.dot(h_encoder, self.params['W_hsigma']) + self.params['b_hsigma'].dimshuffle('x', 0)
 
-            return mu, log_sigma
+        return mu, log_sigma
 
-        def sampler(self, mu, log_sigma):
-            seed = 42
+    def sampler(self, mu, log_sigma):
+        seed = 42
 
-            if "gpu" in theano.config.device:
-                srng = theano.sandbox.cuda.rng_curand.CURAND_RandomStreams(seed=seed)
-            else:
-                srng = T.shared_randomstreams.RandomStreams(seed=seed)
-            # Generate latent variables
-            eps = srng.normal((self.L, mu.shape[0], self.n_latent))
+        if "gpu" in theano.config.device:
+            srng = theano.sandbox.cuda.rng_curand.CURAND_RandomStreams(seed=seed)
+        else:
+            srng = T.shared_randomstreams.RandomStreams(seed=seed)
+        # Generate latent variables
+        eps = srng.normal((self.L, mu.shape[0], self.n_latent))
 
-            # Reparametrize
-            z = mu + T.exp(0.5 * log_sigma) * eps
+        # Reparametrize
+        z = mu + T.exp(0.5 * log_sigma) * eps
 
-            return z
+        return z
 
-        def decoder(self, x, z):
-            h_decoder = relu(T.dot(z, self.params['W_zh']) + self.params['b_zh'].dimshuffle('x', 0))
+    def decoder(self, x, z):
+        h_decoder = relu(T.dot(z, self.params['W_zh']) + self.params['b_zh'].dimshuffle('x', 0))
 
-            if self.continuous:
-                reconstructed_x = T.dot(h_decoder, self.params['W_hxmu']) + self.params['b_hxmu'].dimshuffle('x', 0)
-                log_sigma_decoder = T.dot(h_decoder, self.params['W_hxsigma']) + self.params['b_hxsigma']
+        if self.continuous:
+            reconstructed_x = T.dot(h_decoder, self.params['W_hxmu']) + self.params['b_hxmu'].dimshuffle('x', 0)
+            log_sigma_decoder = T.dot(h_decoder, self.params['W_hxsigma']) + self.params['b_hxsigma']
 
-                logpxz = (-(0.5 * np.log(2 * np.pi) + 0.5 * log_sigma_decoder) -
+            logpxz = (-(0.5 * np.log(2 * np.pi) + 0.5 * log_sigma_decoder) -
                           0.5 * ((x - reconstructed_x) ** 2 / T.exp(log_sigma_decoder))).sum(axis=2).mean(axis=0)
-            else:
-                reconstructed_x = T.nnet.sigmoid(
-                    T.dot(h_decoder, self.params['W_hx']) + self.params['b_hx'].dimshuffle('x', 0))
-                logpxz = - T.nnet.binary_crossentropy(reconstructed_x, x).sum(axis=2).mean(axis=0)
+        else:
+            reconstructed_x = T.nnet.sigmoid(
+                T.dot(h_decoder, self.params['W_hx']) + self.params['b_hx'].dimshuffle('x', 0))
+            logpxz = - T.nnet.binary_crossentropy(reconstructed_x, x).sum(axis=2).mean(axis=0)
 
-            return reconstructed_x, logpxz
+        return reconstructed_x, logpxz
 
-        def create_gradientfunctions(self, x_train):
-            x = T.matrix("x")
+    def create_gradientfunctions(self, x_train):
+        x = T.matrix("x")
 
-            epoch = T.scalar("epoch")
+        epoch = T.scalar("epoch")
 
-            batch_size = x.shape[0]
+        batch_size = x.shape[0]
 
-            mu, log_sigma = self.encoder(x)
-            z = self.sampler(mu, log_sigma)
-            reconstructed_x, logpxz = self.decoder(x, z)
+        mu, log_sigma = self.encoder(x)
+        z = self.sampler(mu, log_sigma)
+        reconstructed_x, logpxz = self.decoder(x, z)
 
-            # Expectation of (logpz - logqz_x) over logqz_x is equal to KLD (see appendix B):
-            KLD = 0.5 * T.sum(1 + log_sigma - mu ** 2 - T.exp(log_sigma), axis=1)
+        # Expectation of (logpz - logqz_x) over logqz_x is equal to KLD (see appendix B):
+        KLD = 0.5 * T.sum(1 + log_sigma - mu ** 2 - T.exp(log_sigma), axis=1)
 
             # Average over batch dimension
-            logpx = T.mean(logpxz + KLD)
+        logpx = T.mean(logpxz + KLD)
 
-            # Compute all the gradients
-            gradients = T.grad(logpx, list(self.params.values()))
+        # Compute all the gradients
+        gradients = T.grad(logpx, list(self.params.values()))
 
-            # Adam implemented as updates
-            updates = self.get_adam_updates(gradients, epoch)
+        # Adam implemented as updates
+        updates = self.get_adam_updates(gradients, epoch)
 
-            batch = T.iscalar('batch')
+        batch = T.iscalar('batch')
 
-            givens = {
-                x: x_train[batch * self.batch_size:(batch + 1) * self.batch_size, :]
-            }
+        givens = {
+            x: x_train[batch * self.batch_size:(batch + 1) * self.batch_size, :]
+        }
 
-            # Define a bunch of functions for convenience
-            update = theano.function([batch, epoch], logpx, updates=updates, givens=givens)
-            likelihood = theano.function([x], logpx)
-            encode = theano.function([x], z)
-            decode = theano.function([z], reconstructed_x)
+        # Define a bunch of functions for convenience
+        update = theano.function([batch, epoch], logpx, updates=updates, givens=givens)
+        likelihood = theano.function([x], logpx)
+        encode = theano.function([x], z)
+        decode = theano.function([z], reconstructed_x)
 
-            return update, likelihood, encode, decode
+        return update, likelihood, encode, decode
 
         # This method transform x into encoded x
-        def transform_data(self, x_train):
-            transformed_x = np.zeros((self.N, self.n_latent))
-            batches = np.arange(int(self.N / self.batch_size))
+    def transform_data(self, x_train):
+        transformed_x = np.zeros((self.N, self.n_latent))
+        batches = np.arange(int(self.N / self.batch_size))
 
-            for batch in batches:
-                batch_x = x_train[batch * self.batch_size:(batch + 1) * self.batch_size, :]
-                transformed_x[batch * self.batch_size:(batch + 1) * self.batch_size, :] = self.encode(batch_x)
+        for batch in batches:
+            batch_x = x_train[batch * self.batch_size:(batch + 1) * self.batch_size, :]
+            transformed_x[batch * self.batch_size:(batch + 1) * self.batch_size, :] = self.encode(batch_x)
 
-            return transformed_x
+        return transformed_x
 
         #
-        def save_parameters(self, path):
-            """Saves all the parameters in a way they can be retrieved later"""
-            pickle.dump({name: p.get_value() for name, p in self.params.items()}, open(path + "/params.pkl", "wb"))
-            pickle.dump({name: m.get_value() for name, m in self.m.items()}, open(path + "/m.pkl", "wb"))
-            pickle.dump({name: v.get_value() for name, v in self.v.items()}, open(path + "/v.pkl", "wb"))
+    def save_parameters(self, path):
+        """Saves all the parameters in a way they can be retrieved later"""
+        pickle.dump({name: p.get_value() for name, p in self.params.items()}, open(path + "/params.pkl", "wb"))
+        pickle.dump({name: m.get_value() for name, m in self.m.items()}, open(path + "/m.pkl", "wb"))
+        pickle.dump({name: v.get_value() for name, v in self.v.items()}, open(path + "/v.pkl", "wb"))
 
-        def load_parameters(self, path):
-            """Load the variables in a shared variable safe way"""
-            p_list = pickle.load(open(path + "/params.pkl", "rb"))
-            m_list = pickle.load(open(path + "/m.pkl", "rb"))
-            v_list = pickle.load(open(path + "/v.pkl", "rb"))
-            for name in p_list.keys():
-                self.params[name].set_value(p_list[name].astype(theano.config.floatX))
-                self.m[name].set_value(m_list[name].astype(theano.config.floatX))
-                self.v[name].set_value(v_list[name].astype(theano.config.floatX))
+    def load_parameters(self, path):
+        """Load the variables in a shared variable safe way"""
+        p_list = pickle.load(open(path + "/params.pkl", "rb"))
+        m_list = pickle.load(open(path + "/m.pkl", "rb"))
+        v_list = pickle.load(open(path + "/v.pkl", "rb"))
+        for name in p_list.keys():
+            self.params[name].set_value(p_list[name].astype(theano.config.floatX))
+            self.m[name].set_value(m_list[name].astype(theano.config.floatX))
+            self.v[name].set_value(v_list[name].astype(theano.config.floatX))
 
-        def get_adam_updates(self, gradients, epoch):
-            updates = OrderedDict()
-            gamma = T.sqrt(1 - self.b2 ** epoch) / (1 - self.b1 ** epoch)
+    def get_adam_updates(self, gradients, epoch):
+        updates = OrderedDict()
+        gamma = T.sqrt(1 - self.b2 ** epoch) / (1 - self.b1 ** epoch)
 
-            values_iterable = zip(self.params.keys(), self.params.values(), gradients,
+        values_iterable = zip(self.params.keys(), self.params.values(), gradients,
                                   self.m.values(), self.v.values())
-            for name, parameter, gradient, m, v in values_iterable:
-                new_m = self.b1 * m + (1. - self.b1) * gradient
-                new_v = self.b2 * v + (1. - self.b2) * (gradient ** 2)
+        for name, parameter, gradient, m, v in values_iterable:
+            new_m = self.b1 * m + (1. - self.b1) * gradient
+            new_v = self.b2 * v + (1. - self.b2) * (gradient ** 2)
+            updates[parameter] = parameter + self.learning_rate * gamma * new_m / (T.sqrt(new_v) + epsilon)
 
-                updates[parameter] = parameter + self.learning_rate * gamma * new_m / (T.sqrt(new_v) + epsilon)
+            if 'W' in name:
+                # MAP on weights (same as L2 regularization)
+               updates[parameter] -= self.learning_rate * self.lam * (
+                             parameter * np.float32(self.batch_size / self.N))
 
-                if 'W' in name:
-                    # MAP on weights (same as L2 regularization)
-                    updates[parameter] -= self.learning_rate * self.lam * (
-                                parameter * np.float32(self.batch_size / self.N))
+            updates[m] = new_m
+            updates[v] = new_v
 
-                updates[m] = new_m
-                updates[v] = new_v
-
-            return updates
+        return updates
 

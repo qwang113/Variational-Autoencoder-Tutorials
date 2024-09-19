@@ -1,6 +1,9 @@
 import numpy as np
 import time
 import os
+
+import theano
+
 from VAE import VAE
 import pickle
 import gzip
